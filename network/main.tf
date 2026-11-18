@@ -13,8 +13,8 @@ module "customer_profile_vpc" {
   cidr = var.customer_profile_vpc_cidr
   azs  = var.customer_profile_vpc_azs
 
-  public_subnets = var.customer_profile_vpc_public_subnets
-  private_subnets = var.customer_profile_vpc_private_subnets
+  public_subnets     = var.customer_profile_vpc_public_subnets
+  private_subnets    = var.customer_profile_vpc_private_subnets
   single_nat_gateway = var.customer_profile_single_nat_gateway
 }
 
@@ -31,8 +31,8 @@ module "account_vpc" {
   cidr = var.account_vpc_cidr
   azs  = var.account_vpc_azs
 
-  public_subnets = var.account_vpc_public_subnets
-  private_subnets = var.account_vpc_private_subnets
+  public_subnets     = var.account_vpc_public_subnets
+  private_subnets    = var.account_vpc_private_subnets
   single_nat_gateway = var.account_single_nat_gateway
 
 }

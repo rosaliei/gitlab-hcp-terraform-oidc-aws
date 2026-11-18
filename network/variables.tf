@@ -33,8 +33,8 @@ variable "customer_profile_vpc_private_subnets" {
 
 variable "customer_profile_single_nat_gateway" {
   description = "SINGLE NAT GATEWAY FOR ALL PRIVATE SUBNETS / ALL AZ"
-  type = bool
-  default = true
+  type        = bool
+  default     = true
 }
 
 ################################################################################
@@ -72,6 +72,6 @@ variable "account_vpc_private_subnets" {
 
 variable "account_single_nat_gateway" {
   description = "SINGLE NAT GATEWAY FOR ALL PRIVATE SUBNETS / ALL AZ"
-  type = bool
-  default = true
+  type        = bool
+  default     = true
 }
