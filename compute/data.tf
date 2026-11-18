@@ -1,4 +1,4 @@
 data "tfe_outputs" "network" {
-  organization = "<your-org>"
-  workspace    = "<network-workspace-name>"
+  organization = "kst-cie"
+  workspace    = "network"
 }
