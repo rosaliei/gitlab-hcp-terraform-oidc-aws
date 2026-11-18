@@ -18,6 +18,8 @@ module "customer_profile_ec2_instance" {
   key_name                    = var.customer_profile_ec2_key_name
   monitoring                  = var.customer_profile_ec2_monitoring
   subnet_id                   = data.tfe_outputs.network.values.customer_profile_public_subnets[0]
+  create_security_group       = false # use only the SGs from the security workspace
+  vpc_security_group_ids      = [data.tfe_outputs.security.values[var.customer_profile_ec2_security_groups[each.key]]]
 
   tags = {
     Terraform   = "true"
@@ -44,7 +46,7 @@ module "account_ec2_instance" {
   source = "terraform-aws-modules/ec2-instance/aws"
 
   providers = {
-    aws = aws.singapore
+    aws = aws.tokyo
   }
 
   for_each = var.account_ec2_name
@@ -56,6 +58,8 @@ module "account_ec2_instance" {
   key_name                    = var.account_ec2_key_name
   monitoring                  = var.account_ec2_monitoring
   subnet_id                   = data.tfe_outputs.network.values.account_private_subnets[0]
+  create_security_group       = false # use only the SGs from the security workspace
+  vpc_security_group_ids      = [data.tfe_outputs.security.values[var.account_ec2_security_groups[each.key]]]
 
   tags = {
     Terraform   = "true"
@@ -68,9 +72,9 @@ module "account_key_pair" {
   version = "3.0.1"
 
   providers = {
-    aws = aws.singapore
+    aws = aws.tokyo
   }
-  
+
 
   key_name           = var.account_ec2_key_name
   create_private_key = true

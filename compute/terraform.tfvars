@@ -11,3 +11,12 @@ account_ec2_associate_public_ip_address = false
 account_ec2_key_name                    = "account_ec2_key"
 account_ec2_monitoring                  = false
 account_ec2_name                        = ["account-ec2"]
+# EC2 name => security group (output name from the security workspace)
+customer_profile_ec2_security_groups = {
+  "hellocloud-jump"      = "customer_profile_jump_sg_id"
+  "customer-profile-ec2" = "customer_profile_ec2_sg_id"
+}
+
+account_ec2_security_groups = {
+  "account-ec2" = "account_sg_id"
+}

@@ -90,3 +90,18 @@ variable "account_ec2_name" {
   type        = set(string)
   default     = [""]
 }
+################################################################################
+# Security groups per EC2 (EC2 name => output name from the security workspace)
+################################################################################
+
+variable "customer_profile_ec2_security_groups" {
+  description = "Map of customer profile EC2 name to security workspace output name"
+  type        = map(string)
+  default     = {}
+}
+
+variable "account_ec2_security_groups" {
+  description = "Map of account EC2 name to security workspace output name"
+  type        = map(string)
+  default     = {}
+}
