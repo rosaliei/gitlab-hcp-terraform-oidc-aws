@@ -17,7 +17,7 @@ module "customer_profile_ec2_instance" {
   associate_public_ip_address = var.customer_profile_ec2_associate_public_ip_address
   key_name                    = var.customer_profile_ec2_key_name
   monitoring                  = var.customer_profile_ec2_monitoring
-  subnet_id                   = data.tfe_outputs.network.values.public_subnets[0]
+  subnet_id                   = data.tfe_outputs.network.values.customer_profile_public_subnets[0]
 
   tags = {
     Terraform   = "true"
@@ -55,7 +55,7 @@ module "account_ec2_instance" {
   associate_public_ip_address = var.account_ec2_associate_public_ip_address
   key_name                    = var.account_ec2_key_name
   monitoring                  = var.account_ec2_monitoring
-  subnet_id                   = data.tfe_outputs.network.values.private_subnets[0]
+  subnet_id                   = data.tfe_outputs.network.values.account_private_subnets[0]
 
   tags = {
     Terraform   = "true"
