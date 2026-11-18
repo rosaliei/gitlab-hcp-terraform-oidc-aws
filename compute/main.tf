@@ -26,6 +26,11 @@ module "customer_profile_ec2_instance" {
 }
 
 module "customer_profile_key_pair" {
+
+  providers = {
+    aws = aws.singapore
+  }
+
   source  = "terraform-aws-modules/key-pair/aws"
   version = "3.0.1"
 
@@ -61,6 +66,11 @@ module "account_ec2_instance" {
 module "account_key_pair" {
   source  = "terraform-aws-modules/key-pair/aws"
   version = "3.0.1"
+
+  providers = {
+    aws = aws.singapore
+  }
+  
 
   key_name           = var.account_ec2_key_name
   create_private_key = true
