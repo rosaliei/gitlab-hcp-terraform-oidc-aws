@@ -23,6 +23,15 @@ customer_profile_ingress_rules = {
     from_port   = 22
     to_port     = 22
   }
+
+  # KAN-4 TEST ONLY: OPA should block SSH from internet
+  ssh_from_internet = {
+    description = "SSH from internet (OPA test)"
+    cidr_ipv4   = "0.0.0.0/0"
+    ip_protocol = "tcp"
+    from_port   = 22
+    to_port     = 22
+  }
 }
 
 # Customer profile EC2 -> internet: allow all outbound
