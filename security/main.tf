@@ -30,6 +30,7 @@ module "customer_profile_ec2_security_group" {
 
   tags = {
     Environment = "customer_profile"
+    Test        = "KAN-4"
   }
 }
 
