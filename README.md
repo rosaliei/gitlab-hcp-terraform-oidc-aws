@@ -3,7 +3,7 @@
 > 📐 **Full walkthrough:** every step, screen, setting and test is detailed in my Excalidraw board:
 > https://link.excalidraw.com/l/9hD7S5FgGWN/7vcS89NuY35
 >
-> AI tools helped generate parts of the code and docs, but I drew the whole architecture myself and worked through it from top to bottom to understand every step.
+> I drew every step of this board myself and tested each one from top to bottom. In a generative AI world, anyone can generate code and docs. My goal here was to actually understand how every piece works and why, not just to make it run.
 
 Keyless AWS infrastructure delivery with **GitHub → HCP Terraform (OPA) → AWS**, tracked end to end in **Jira** with notifications in **Slack**.
 
