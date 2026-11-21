@@ -1,4 +1,3 @@
-# KAN-4: test comment to trigger HCP Terraform run
 locals {
   # Security group IDs that tfvars can refer to by name (source_sg = "...")
   security_group_ids = {
@@ -30,7 +29,6 @@ module "customer_profile_ec2_security_group" {
 
   tags = {
     Environment = "customer_profile"
-    Test        = "KAN-4"
   }
 }
 
