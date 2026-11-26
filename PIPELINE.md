@@ -34,8 +34,8 @@ copy digest         ──▶ gitops/envs/prod  ──▶ Argo CD syncs oia-prod
 
 - **Gitleaks**: stop secrets (keys, tokens) from getting into the repo.
 - **Tests**: pytest for both apps.
-- **Distroless image**: multi-stage build. Dependencies are installed in `python:3.11-slim`, then only the app + its packages
-  are copied into `gcr.io/distroless/python3-debian12:nonroot`. No shell, no apt, no pip, non-root user:
+- **Distroless image**: multi-stage build. Dependencies are installed in `python:3.13-slim-trixie`, then only the app + its packages
+  are copied into `gcr.io/distroless/python3-debian13:nonroot`. No shell, no apt, no pip, non-root user:
   fewer packages = fewer CVEs for Trivy to find and less for an attacker to use.
 - **Trivy**: scan the image, fail on HIGH/CRITICAL CVEs that have a fix.
 - **Digest, not tag**: `image@sha256:...` can never change; a tag like `latest` can. What was tested in dev is byte-for-byte what goes to prod.

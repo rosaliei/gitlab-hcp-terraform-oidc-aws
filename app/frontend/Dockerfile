@@ -1,5 +1,5 @@
 # ---- build stage: normal python image, install dependencies into /app/deps ----
-FROM python:3.11-slim-bookworm AS build
+FROM python:3.13-slim-trixie AS build
 
 WORKDIR /app
 COPY requirements.txt .
@@ -7,8 +7,8 @@ RUN pip install --no-cache-dir --target=/app/deps -r requirements.txt
 COPY app.py .
 
 # ---- run stage: distroless = only python, no shell / apt / pip, runs as non-root ----
-# python version must match the build stage (3.11, Debian 12)
-FROM gcr.io/distroless/python3-debian12:nonroot
+# python version must match the build stage (3.13, Debian 13)
+FROM gcr.io/distroless/python3-debian13:nonroot
 
 LABEL org.opencontainers.image.source=https://github.com/rosaliei/gitlab-hcp-terraform-oidc-aws
 
