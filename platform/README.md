@@ -11,23 +11,20 @@ Install **Istio first**, then **Prometheus**, then `istio-monitoring.yaml` (it n
 
 ---
 
-## 1. Istio (service mesh, sidecar mode)
+## 1. Istio (service mesh, sidecar mode) with istioctl
 
 ```bash
-helm repo add istio https://istio-release.storage.googleapis.com/charts
-helm repo update
-helm search repo istio/istiod            # pick a version, use it below for all 3 charts
+brew install istioctl                   # or: curl -L https://istio.io/downloadIstio | sh -
 
-kubectl create namespace istio-system
-
-# CRDs (VirtualService, PeerAuthentication, ...)
-helm install istio-base istio/base -n istio-system --version <VERSION>
-
-# control plane
-helm install istiod istio/istiod -n istio-system --version <VERSION> -f istio/istiod-values.yaml --wait
+istioctl x precheck                     # checks the cluster is ready for Istio
+istioctl install -f istio/istio.yaml -y # installs istiod (profile: minimal)
 
 kubectl -n istio-system get pods        # istiod should be Running
+istioctl version                        # client and control plane versions
 ```
+
+`istio/istio.yaml` is the whole config: profile `minimal` (only istiod, no ingress gateway,
+because traffic already comes in through nginx + ingress-nginx), access logs on, small resource requests.
 
 ### Add sidecars to the app
 
@@ -43,6 +40,7 @@ Sidecars are only added to **new** pods, so restart them:
 ```bash
 for ns in oia-dev oia-qa oia-prod; do kubectl -n $ns rollout restart deploy; done
 kubectl -n oia-dev get pods              # READY 2/2 = app + istio-proxy
+istioctl analyze -A                      # checks the mesh config for problems
 ```
 
 ### mTLS strict (optional, good to show)
@@ -109,5 +107,6 @@ for i in $(seq 1 50); do curl -s localhost:8081 >/dev/null; done
 kubectl delete -f monitoring/istio-monitoring.yaml
 helm uninstall monitoring -n monitoring
 kubectl delete -f istio/mtls-strict.yaml
-helm uninstall istiod istio-base -n istio-system
+istioctl uninstall --purge -y
+kubectl delete namespace istio-system
 ```

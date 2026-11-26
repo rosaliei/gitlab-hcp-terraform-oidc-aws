@@ -1,0 +1,19 @@
+# istioctl install -f istio/istio.yaml -y
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  # minimal = only istiod (control plane), no ingress gateway.
+  # (our traffic comes in through nginx + ingress-nginx)
+  profile: minimal
+
+  meshConfig:
+    # every sidecar logs each request -> kubectl logs <pod> -c istio-proxy
+    accessLogFile: /dev/stdout
+
+  components:
+    pilot:
+      k8s:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
