@@ -1,0 +1,11 @@
+ansible_user: ubuntu
+ansible_ssh_private_key_file: ~/.ssh/open-innovation-ai.pem
+
+# Private servers are reached through the jump host
+jump_ip: "{{ hostvars[groups['jump'][0]].public_ip_address }}"
+ansible_ssh_common_args: >-
+  -o StrictHostKeyChecking=no
+  -o ProxyCommand="ssh -W %h:%p -o StrictHostKeyChecking=no -i ~/.ssh/open-innovation-ai.pem ubuntu@{{ jump_ip }}"
+
+# nginx private IP = the address RKE2 nodes use to reach the cluster API
+nginx_ip: "{{ hostvars[groups['nginx'][0]].private_ip_address }}"

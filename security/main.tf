@@ -34,6 +34,7 @@ resource "aws_vpc_security_group_egress_rule" "jump_out" {
 ################################################################################
 # NGINX
 #   in : 80, 443 from internet
+#        6443, 9345 from RKE2 nodes
 #        22 from jump host
 #   out: everything
 ################################################################################
@@ -70,6 +71,17 @@ resource "aws_vpc_security_group_ingress_rule" "nginx_ssh_from_jump" {
   ip_protocol                  = "tcp"
   from_port                    = 22
   to_port                      = 22
+}
+
+# RKE2 nodes -> nginx: kube api (6443) and rke2 join (9345)
+resource "aws_vpc_security_group_ingress_rule" "nginx_from_rke2" {
+  provider                     = aws.singapore
+  for_each                     = toset(["6443", "9345"])
+  security_group_id            = aws_security_group.nginx.id
+  referenced_security_group_id = aws_security_group.rke2.id
+  ip_protocol                  = "tcp"
+  from_port                    = each.value
+  to_port                      = each.value
 }
 
 resource "aws_vpc_security_group_egress_rule" "nginx_out" {

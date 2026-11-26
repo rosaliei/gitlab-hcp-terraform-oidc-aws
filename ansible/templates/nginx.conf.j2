@@ -1,0 +1,43 @@
+# Managed by ansible (site.yml). nginx is a plain TCP load balancer for RKE2.
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+  worker_connections 1024;
+}
+
+stream {
+  # Kubernetes API -> masters
+  upstream rke2_api {
+{% for host in groups['masters'] %}
+    server {{ hostvars[host].private_ip_address }}:6443;
+{% endfor %}
+  }
+
+  # RKE2 join/register -> masters
+  upstream rke2_register {
+{% for host in groups['masters'] %}
+    server {{ hostvars[host].private_ip_address }}:9345;
+{% endfor %}
+  }
+
+  # Web traffic -> ingress controller on every node
+  upstream ingress_http {
+{% for host in groups['k8s_cluster'] %}
+    server {{ hostvars[host].private_ip_address }}:80;
+{% endfor %}
+  }
+
+  upstream ingress_https {
+{% for host in groups['k8s_cluster'] %}
+    server {{ hostvars[host].private_ip_address }}:443;
+{% endfor %}
+  }
+
+  server { listen 6443; proxy_pass rke2_api; }
+  server { listen 9345; proxy_pass rke2_register; }
+  server { listen 80;   proxy_pass ingress_http; }
+  server { listen 443;  proxy_pass ingress_https; }
+}

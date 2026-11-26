@@ -1,0 +1,35 @@
+# 1. nginx first, because masters 2 and 3 join the cluster through it
+- name: Load balancer
+  hosts: nginx
+  become: true
+  tasks:
+    - name: Install nginx with the stream (TCP) module
+      ansible.builtin.apt:
+        name: [nginx, libnginx-mod-stream]
+        update_cache: true
+
+    - name: Write nginx.conf
+      ansible.builtin.template:
+        src: templates/nginx.conf.j2
+        dest: /etc/nginx/nginx.conf
+        mode: "0644"
+      notify: Restart nginx
+
+  handlers:
+    - name: Restart nginx
+      ansible.builtin.service:
+        name: nginx
+        state: restarted
+
+# 2. RKE2 on masters + worker
+- name: RKE2 cluster
+  hosts: k8s_cluster
+  become: true
+  pre_tasks:
+    - name: Stop if RKE2_TOKEN is not set
+      ansible.builtin.assert:
+        that: rke2_token | length > 0
+        fail_msg: "Run: export RKE2_TOKEN=<your secret>"
+      run_once: true
+  roles:
+    - role: lablabs.rke2
