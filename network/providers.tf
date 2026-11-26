@@ -8,9 +8,3 @@ provider "aws" {
   alias  = "singapore"
   region = "ap-southeast-1"
 }
-
-# TEMPORARY: only to delete the old account VPC in Tokyo. Remove after one apply.
-provider "aws" {
-  alias  = "tokyo"
-  region = "ap-northeast-1"
-}
