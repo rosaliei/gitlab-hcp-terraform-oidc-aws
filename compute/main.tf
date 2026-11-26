@@ -26,7 +26,7 @@ module "ec2_instance" {
   monitoring                  = var.monitoring
   subnet_id                   = local.subnets[each.value.subnet][each.value.subnet_index]
   create_security_group       = false # use only the SGs from the security workspace
-  vpc_security_group_ids      = compact([try(data.tfe_outputs.security.values[each.value.security_group], null)])
+  vpc_security_group_ids      = [data.tfe_outputs.security.values[each.value.security_group]]
 
   root_block_device = {
     size = each.value.disk_size
