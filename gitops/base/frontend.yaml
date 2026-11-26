@@ -10,8 +10,14 @@ spec:
     metadata:
       labels: { app: frontend }
     spec:
+      securityContext:
+        runAsNonRoot: true # distroless :nonroot image runs as uid 65532
       containers:
         - name: frontend
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
           image: frontend # replaced by kustomize (envs/<env>/kustomization.yaml)
           env:
             - name: BACKEND_URL

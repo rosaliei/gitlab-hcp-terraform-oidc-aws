@@ -10,8 +10,14 @@ spec:
     metadata:
       labels: { app: backend }
     spec:
+      securityContext:
+        runAsNonRoot: true # distroless :nonroot image runs as uid 65532
       containers:
         - name: backend
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
           image: backend # replaced by kustomize (envs/<env>/kustomization.yaml)
           ports:
             - containerPort: 8000
