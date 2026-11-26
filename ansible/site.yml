@@ -13,7 +13,7 @@
     - name: Get Let's Encrypt certificate (DNS challenge)
       ansible.builtin.command: >-
         certbot certonly --dns-route53
-        -d {{ domain }}
+        --cert-name {{ domain }} -d {{ domain }} -d '*.{{ domain }}'
         --non-interactive --agree-tos --register-unsafely-without-email
         --deploy-hook "systemctl reload nginx"
       args:

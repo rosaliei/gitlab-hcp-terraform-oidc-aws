@@ -15,6 +15,15 @@
         kubectl apply -n argocd --server-side --force-conflicts
         -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
+    # nginx does TLS for argocd.kst-devops.com, so argocd-server serves plain http
+    - name: Run argocd-server in insecure (http) mode
+      ansible.builtin.command: >-
+        kubectl -n argocd patch configmap argocd-cmd-params-cm --type merge
+        -p '{"data":{"server.insecure":"true"}}'
+
+    - name: Restart argocd-server to pick up insecure mode
+      ansible.builtin.command: kubectl -n argocd rollout restart deploy/argocd-server
+
     - name: Wait until Argo CD is ready
       ansible.builtin.command: kubectl -n argocd rollout status deploy/argocd-server --timeout=300s
 

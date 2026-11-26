@@ -83,16 +83,46 @@ helm install kiali-server kiali/kiali-server -n istio-system \
   --set external_services.tracing.use_grpc=true
 ```
 
-## 5. Gateway → frontend, then make traffic
+## 5. Public URLs (nginx -> Istio gateway)
+
+```
+https://oia.kst-devops.com      nginx (TLS) -> istio-ingressgateway :30080 -> frontend (oia-dev)
+https://argocd.kst-devops.com   nginx (TLS) -> istio-ingressgateway :30080 -> argocd-server
+https://api.kst-devops.com:6443 nginx (TCP passthrough)                    -> Kubernetes API on the masters
+```
+
+Roll it out in this order:
 
 ```bash
-kubectl apply -f istio/gateway.yaml
+# a) push, then apply in HCP: security (6443 public, 30080 nginx->nodes), compute (DNS records)
 
-# terminal A
-kubectl -n istio-system port-forward svc/istio-ingressgateway 8082:80
-# terminal B
-for i in $(seq 1 200); do curl -s localhost:8082 >/dev/null; sleep 0.2; done
+# b) nginx: wildcard cert *.kst-devops.com + new routing; RKE2: api.kst-devops.com in the API cert
+cd ansible && ansible-playbook site.yml && cd -
+
+# c) Istio gateway with fixed NodePort 30080 (re-run is fine, it updates the install)
+istioctl install -f istio/istio.yaml -y
+kubectl -n istio-system get svc istio-ingressgateway      # 80:30080/TCP
+
+# d) Argo CD in http mode (nginx does TLS)
+cd ansible && ansible-playbook argocd.yml && cd -
+
+# e) host routing
+kubectl apply -f istio/gateway.yaml
 ```
+
+Test:
+
+```bash
+curl -s https://oia.kst-devops.com                 # <h1>Open Innovation AI</h1>...
+curl -sI https://argocd.kst-devops.com | head -1   # HTTP/2 200
+dig +short api.kst-devops.com                      # nginx public IP
+
+# kubectl without the tunnel: copy the context, point it at api.kst-devops.com
+kubectl config set-cluster open-innovation-ai --server=https://api.kst-devops.com:6443
+kubectl get nodes
+```
+
+Argo CD CLI through nginx needs gRPC-web: `argocd login argocd.kst-devops.com --grpc-web`
 
 ## 6. Open the UIs (port-forward, one terminal each)
 

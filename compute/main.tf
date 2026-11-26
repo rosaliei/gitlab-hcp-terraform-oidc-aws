@@ -57,14 +57,16 @@ module "key_pair" {
 }
 
 ###############################################################################################################
-### DNS: rancher.kst-devops.com -> nginx public IP ###
+### DNS: <name>.kst-devops.com -> nginx public IP ###
 ###############################################################################################################
 
-resource "aws_route53_record" "rancher" {
+resource "aws_route53_record" "nginx" {
   provider = aws.singapore
-  zone_id  = data.tfe_outputs.network.values.zone_id
-  name     = "rancher.kst-devops.com"
-  type     = "A"
-  ttl      = 300
-  records  = [module.ec2_instance["nginx"].public_ip]
+  for_each = toset(["rancher", "api", "argocd", "oia"])
+
+  zone_id = data.tfe_outputs.network.values.zone_id
+  name    = "${each.key}.kst-devops.com"
+  type    = "A"
+  ttl     = 300
+  records = [module.ec2_instance["nginx"].public_ip]
 }

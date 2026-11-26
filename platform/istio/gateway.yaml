@@ -1,10 +1,13 @@
-# Send traffic from the Istio ingress gateway to the frontend in oia-dev.
-# Path: istio-ingressgateway -> frontend -> backend (all inside the mesh, all in Kiali)
+# nginx (TLS, Let's Encrypt) -> istio-ingressgateway :30080 (plain http) -> pick service by host name
+#
+#   oia.kst-devops.com     -> frontend     (oia-dev)
+#   argocd.kst-devops.com  -> argocd-server (argocd)
+
 apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
-  name: oia-gateway
-  namespace: oia-dev
+  name: public
+  namespace: istio-system
 spec:
   selector:
     istio: ingressgateway
@@ -13,19 +16,38 @@ spec:
         number: 80
         name: http
         protocol: HTTP
-      hosts: ["*"]
+      hosts:
+        - oia.kst-devops.com
+        - argocd.kst-devops.com
 ---
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: frontend
+  name: oia
   namespace: oia-dev
 spec:
-  hosts: ["*"]
-  gateways: [oia-gateway]
+  hosts: [oia.kst-devops.com]
+  gateways: [istio-system/public]
   http:
     - route:
         - destination:
             host: frontend
+            port:
+              number: 80
+---
+# Argo CD runs in "insecure" mode (plain http) because nginx already does TLS.
+# (set by ansible/argocd.yml)
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: argocd
+  namespace: argocd
+spec:
+  hosts: [argocd.kst-devops.com]
+  gateways: [istio-system/public]
+  http:
+    - route:
+        - destination:
+            host: argocd-server
             port:
               number: 80

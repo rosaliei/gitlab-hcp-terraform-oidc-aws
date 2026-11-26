@@ -6,9 +6,24 @@ spec:
   # Good for showing everything, too heavy / too open for prod.
   profile: demo
 
-  values:
-    gateways:
-      istio-ingressgateway:
-        # RKE2 on EC2 has no cloud LoadBalancer controller, a LoadBalancer
-        # service would stay <pending>. NodePort works, and port-forward too.
-        type: NodePort
+  components:
+    ingressGateways:
+      - name: istio-ingressgateway
+        enabled: true
+        k8s:
+          service:
+            # RKE2 on EC2 has no cloud LoadBalancer, so NodePort with a FIXED port.
+            # nginx sends argocd/oia.kst-devops.com to <every node>:30080
+            type: NodePort
+            ports:
+              - name: status-port
+                port: 15021
+                targetPort: 15021
+              - name: http2
+                port: 80
+                targetPort: 8080
+                nodePort: 30080
+              - name: https
+                port: 443
+                targetPort: 8443
+                nodePort: 30443

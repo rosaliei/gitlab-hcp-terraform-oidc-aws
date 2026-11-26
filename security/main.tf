@@ -33,7 +33,7 @@ resource "aws_vpc_security_group_egress_rule" "jump_out" {
 
 ################################################################################
 # NGINX
-#   in : 80, 443 from internet
+#   in : 80, 443, 6443 from internet
 #        6443, 9345 from RKE2 nodes
 #        22 from jump host
 #   out: everything
@@ -62,6 +62,16 @@ resource "aws_vpc_security_group_ingress_rule" "nginx_https" {
   ip_protocol       = "tcp"
   from_port         = 443
   to_port           = 443
+}
+
+# Internet -> nginx: Kubernetes API (api.kst-devops.com:6443). kubectl still needs the kubeconfig cert.
+resource "aws_vpc_security_group_ingress_rule" "nginx_api" {
+  provider          = aws.singapore
+  security_group_id = aws_security_group.nginx.id
+  cidr_ipv4         = "0.0.0.0/0" # change to your own IP, e.g. "1.2.3.4/32"
+  ip_protocol       = "tcp"
+  from_port         = 6443
+  to_port           = 6443
 }
 
 resource "aws_vpc_security_group_ingress_rule" "nginx_ssh_from_jump" {
@@ -95,6 +105,7 @@ resource "aws_vpc_security_group_egress_rule" "nginx_out" {
 # RKE2 NODES (3 masters + 1 worker)
 #   in : everything from other RKE2 nodes
 #        80, 443, 6443, 9345 from nginx
+#        30080 from nginx (Istio ingress gateway NodePort)
 #        22 from jump host
 #   out: everything
 ################################################################################
@@ -115,7 +126,7 @@ resource "aws_vpc_security_group_ingress_rule" "rke2_from_rke2" {
 
 resource "aws_vpc_security_group_ingress_rule" "rke2_from_nginx" {
   provider                     = aws.singapore
-  for_each                     = toset(["80", "443", "6443", "9345"])
+  for_each                     = toset(["80", "443", "6443", "9345", "30080"])
   security_group_id            = aws_security_group.rke2.id
   referenced_security_group_id = aws_security_group.nginx.id
   ip_protocol                  = "tcp"

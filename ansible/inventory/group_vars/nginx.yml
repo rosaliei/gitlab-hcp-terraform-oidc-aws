@@ -1,2 +1,2 @@
-# Domain served by nginx with a Let's Encrypt certificate
-domain: rancher.kst-devops.com
+# One wildcard Let's Encrypt certificate for every <name>.kst-devops.com
+domain: kst-devops.com
