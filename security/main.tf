@@ -1,52 +1,128 @@
 locals {
-  # Security group IDs that tfvars can refer to by name (source_sg = "...")
-  security_group_ids = {
-    jump = module.jump_security_group.id
-  }
-
-  # Same rules as tfvars, but source_sg is swapped for the real security group ID
-  nginx_ingress_rules = {
-    for name, rule in var.nginx_ingress_rules :
-    name => merge(rule, {
-      referenced_security_group_id = rule.source_sg == null ? rule.referenced_security_group_id : local.security_group_ids[rule.source_sg]
-    })
-  }
+  vpc_id = data.tfe_outputs.network.values.vpc_id
 }
 
-module "nginx_security_group" {
-  source = "terraform-aws-modules/security-group/aws"
+################################################################################
+# JUMP HOST
+#   in : 22 from internet
+#   out: everything
+################################################################################
 
-  providers = {
-    aws = aws.singapore
-  }
-
-  name        = var.nginx_sg_name
-  description = var.nginx_sg_description
-  vpc_id      = data.tfe_outputs.network.values.vpc_id
-
-  ingress_rules = local.nginx_ingress_rules
-  egress_rules  = var.nginx_egress_rules
-
-  tags = {
-    Environment = "open-innovation-ai"
-    ManagedBy   = "terraform"
-  }
+resource "aws_security_group" "jump" {
+  provider    = aws.singapore
+  name        = "jump-sg"
+  description = "Jump host"
+  vpc_id      = local.vpc_id
 }
 
-module "jump_security_group" {
-  source = "terraform-aws-modules/security-group/aws"
+resource "aws_vpc_security_group_ingress_rule" "jump_ssh" {
+  provider          = aws.singapore
+  security_group_id = aws_security_group.jump.id
+  cidr_ipv4         = "0.0.0.0/0" # change to your own IP, e.g. "1.2.3.4/32"
+  ip_protocol       = "tcp"
+  from_port         = 22
+  to_port           = 22
+}
 
-  providers = {
-    aws = aws.singapore
-  }
+resource "aws_vpc_security_group_egress_rule" "jump_out" {
+  provider          = aws.singapore
+  security_group_id = aws_security_group.jump.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
+}
 
-  name          = var.jump_sg_name
-  description   = var.jump_sg_description
-  vpc_id        = data.tfe_outputs.network.values.vpc_id
-  ingress_rules = var.jump_ingress_rules
-  egress_rules  = var.jump_egress_rules
+################################################################################
+# NGINX
+#   in : 80, 443 from internet
+#        22 from jump host
+#   out: everything
+################################################################################
 
-  tags = {
-    Environment = "open-innovation-ai"
-  }
+resource "aws_security_group" "nginx" {
+  provider    = aws.singapore
+  name        = "nginx-sg"
+  description = "nginx load balancer"
+  vpc_id      = local.vpc_id
+}
+
+resource "aws_vpc_security_group_ingress_rule" "nginx_http" {
+  provider          = aws.singapore
+  security_group_id = aws_security_group.nginx.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "tcp"
+  from_port         = 80
+  to_port           = 80
+}
+
+resource "aws_vpc_security_group_ingress_rule" "nginx_https" {
+  provider          = aws.singapore
+  security_group_id = aws_security_group.nginx.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+}
+
+resource "aws_vpc_security_group_ingress_rule" "nginx_ssh_from_jump" {
+  provider                     = aws.singapore
+  security_group_id            = aws_security_group.nginx.id
+  referenced_security_group_id = aws_security_group.jump.id
+  ip_protocol                  = "tcp"
+  from_port                    = 22
+  to_port                      = 22
+}
+
+resource "aws_vpc_security_group_egress_rule" "nginx_out" {
+  provider          = aws.singapore
+  security_group_id = aws_security_group.nginx.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
+}
+
+################################################################################
+# RKE2 NODES (3 masters + 1 worker)
+#   in : everything from other RKE2 nodes
+#        80, 443, 6443, 9345 from nginx
+#        22 from jump host
+#   out: everything
+################################################################################
+
+resource "aws_security_group" "rke2" {
+  provider    = aws.singapore
+  name        = "rke2-node-sg"
+  description = "RKE2 nodes"
+  vpc_id      = local.vpc_id
+}
+
+resource "aws_vpc_security_group_ingress_rule" "rke2_from_rke2" {
+  provider                     = aws.singapore
+  security_group_id            = aws_security_group.rke2.id
+  referenced_security_group_id = aws_security_group.rke2.id
+  ip_protocol                  = "-1"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "rke2_from_nginx" {
+  provider                     = aws.singapore
+  for_each                     = toset(["80", "443", "6443", "9345"])
+  security_group_id            = aws_security_group.rke2.id
+  referenced_security_group_id = aws_security_group.nginx.id
+  ip_protocol                  = "tcp"
+  from_port                    = each.value
+  to_port                      = each.value
+}
+
+resource "aws_vpc_security_group_ingress_rule" "rke2_ssh_from_jump" {
+  provider                     = aws.singapore
+  security_group_id            = aws_security_group.rke2.id
+  referenced_security_group_id = aws_security_group.jump.id
+  ip_protocol                  = "tcp"
+  from_port                    = 22
+  to_port                      = 22
+}
+
+resource "aws_vpc_security_group_egress_rule" "rke2_out" {
+  provider          = aws.singapore
+  security_group_id = aws_security_group.rke2.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
 }
