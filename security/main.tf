@@ -1,7 +1,7 @@
 locals {
   # Security group IDs that tfvars can refer to by name (source_sg = "...")
   security_group_ids = {
-    customer_profile_jump = module.customer_profile_jump_security_group.id
+    jump = module.jump_security_group.id
   }
 
   # Same rules as tfvars, but source_sg is swapped for the real security group ID
@@ -22,31 +22,37 @@ module "nginx_security_group" {
 
   name        = var.nginx_sg_name
   description = var.nginx_sg_description
-  vpc_id      = data.tfe_outputs.network.values.customer_profile_vpc_id
+  vpc_id      = data.tfe_outputs.network.values.vpc_id
 
   ingress_rules = local.nginx_ingress_rules
   egress_rules  = var.nginx_egress_rules
 
   tags = {
-    Environment = "customer_profile"
+    Environment = "open-innovation-ai"
     ManagedBy   = "terraform"
   }
 }
 
-module "customer_profile_jump_security_group" {
+module "jump_security_group" {
   source = "terraform-aws-modules/security-group/aws"
 
   providers = {
     aws = aws.singapore
   }
 
-  name          = var.customer_profile_jump_sg_name
-  description   = var.customer_profile_jump_sg_description
-  vpc_id        = data.tfe_outputs.network.values.customer_profile_vpc_id
-  ingress_rules = var.customer_profile_jump_ingress_rules
-  egress_rules  = var.customer_profile_jump_egress_rules
+  name          = var.jump_sg_name
+  description   = var.jump_sg_description
+  vpc_id        = data.tfe_outputs.network.values.vpc_id
+  ingress_rules = var.jump_ingress_rules
+  egress_rules  = var.jump_egress_rules
 
   tags = {
-    Environment = "customer_profile"
+    Environment = "open-innovation-ai"
   }
+}
+
+# Renamed from customer_profile_jump_security_group. Same SG, no destroy.
+moved {
+  from = module.customer_profile_jump_security_group
+  to   = module.jump_security_group
 }

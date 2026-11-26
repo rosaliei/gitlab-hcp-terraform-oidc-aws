@@ -7,10 +7,10 @@ resource "aws_security_group" "rke2" {
 
   name        = "rke2-node-sg"
   description = "RKE2 nodes"
-  vpc_id      = data.tfe_outputs.network.values.customer_profile_vpc_id
+  vpc_id      = data.tfe_outputs.network.values.vpc_id
 
   tags = {
-    Environment = "customer_profile"
+    Environment = "open-innovation-ai"
     ManagedBy   = "terraform"
   }
 }
@@ -46,7 +46,7 @@ resource "aws_vpc_security_group_ingress_rule" "rke2_ssh_from_jump" {
   provider = aws.singapore
 
   security_group_id            = aws_security_group.rke2.id
-  referenced_security_group_id = module.customer_profile_jump_security_group.id
+  referenced_security_group_id = module.jump_security_group.id
   ip_protocol                  = "tcp"
   from_port                    = 22
   to_port                      = 22

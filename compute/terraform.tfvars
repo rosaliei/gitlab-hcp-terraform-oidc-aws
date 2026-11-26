@@ -1,18 +1,18 @@
 # Ubuntu 24.04 (RKE2 supports Ubuntu; it does not officially support Amazon Linux)
-customer_profile_ec2_ami_ssm_parameter = "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id"
-customer_profile_ec2_key_name          = "customer_profile_ec2_key"
-customer_profile_ec2_monitoring        = false
+ami_ssm_parameter = "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id"
+key_name          = "open-innovation-ai-key"
+monitoring        = false
 
 # public subnets  -> jump host, nginx
 # private subnets -> RKE2 masters (one per AZ) and worker
-customer_profile_ec2s = {
+ec2s = {
   "hellocloud-jump" = {
     role           = "jump"
     instance_type  = "t3.micro"
     subnet         = "public"
     subnet_index   = 0
     public_ip      = true
-    security_group = "customer_profile_jump_sg_id"
+    security_group = "jump_sg_id"
     disk_size      = 8
   }
 

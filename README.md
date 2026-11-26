@@ -13,7 +13,7 @@ No AWS access keys are stored anywhere. HCP Terraform proves who it is with a sh
 
 | Stack | Module | What it builds |
 |-------|--------|----------------|
-| `network/` | [`terraform-aws-modules/vpc/aws`](https://registry.terraform.io/modules/terraform-aws-modules/vpc/aws) | VPC (`customer_profile_vpc`), subnets and NAT gateway |
+| `network/` | [`terraform-aws-modules/vpc/aws`](https://registry.terraform.io/modules/terraform-aws-modules/vpc/aws) | VPC (`open-innovation-ai-vpc`), subnets and NAT gateway |
 | `security/` | [`terraform-aws-modules/security-group/aws`](https://registry.terraform.io/modules/terraform-aws-modules/security-group/aws) | Security groups for the jump host, nginx, and RKE2 nodes |
 | `compute/` | [`terraform-aws-modules/ec2-instance/aws`](https://registry.terraform.io/modules/terraform-aws-modules/ec2-instance/aws) | EC2 instances: jump host, nginx, 3 RKE2 masters, 1 RKE2 worker |
 | `compute/` | [`terraform-aws-modules/key-pair/aws`](https://registry.terraform.io/modules/terraform-aws-modules/key-pair/aws) | SSH key pairs for the instances |

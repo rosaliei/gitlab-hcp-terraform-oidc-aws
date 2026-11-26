@@ -25,8 +25,8 @@ nginx_ingress_rules = {
   }
 
   ssh_from_jump = {
-    description = "SSH from customer profile jump host"
-    source_sg   = "customer_profile_jump" # resolved to the jump SG ID in main.tf
+    description = "SSH from jump host"
+    source_sg   = "jump" # resolved to the jump SG ID in main.tf
     ip_protocol = "tcp"
     from_port   = 22
     to_port     = 22
@@ -43,15 +43,15 @@ nginx_egress_rules = {
 }
 
 ################################################################################
-# customer_profile JUMP security group
+# JUMP security group
 ################################################################################
 
-customer_profile_jump_sg_name        = "customer-profile-jump-sg"
-customer_profile_jump_sg_description = "Customer profile jump host - SSH from public"
+jump_sg_name        = "jump-sg"
+jump_sg_description = "Jump host - SSH from public"
 
 # Public -> jump host: SSH (22) only
 # Tip: replace 0.0.0.0/0 with your office/home IP (e.g. "203.0.113.10/32") to lock it down.
-customer_profile_jump_ingress_rules = {
+jump_ingress_rules = {
   ssh_from_internet = {
     description = "SSH from internet"
     cidr_ipv4   = "0.0.0.0/0"
@@ -62,7 +62,7 @@ customer_profile_jump_ingress_rules = {
 }
 
 # Jump host -> anywhere (internet, nginx, RKE2 nodes): allow all outbound
-customer_profile_jump_egress_rules = {
+jump_egress_rules = {
   all_to_internet = {
     description = "Allow all outbound to internet"
     cidr_ipv4   = "0.0.0.0/0"

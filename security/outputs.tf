@@ -3,9 +3,9 @@ output "nginx_sg_id" {
   value       = module.nginx_security_group.id
 }
 
-output "customer_profile_jump_sg_id" {
-  description = "Security group ID for the customer profile jump host"
-  value       = module.customer_profile_jump_security_group.id
+output "jump_sg_id" {
+  description = "Security group ID for the jump host"
+  value       = module.jump_security_group.id
 }
 
 output "rke2_sg_id" {
