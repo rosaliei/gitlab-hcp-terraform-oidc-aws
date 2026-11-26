@@ -1,190 +1,209 @@
-# HCP Terraform + AWS OIDC — Infra Change Workflow
+# Open Innovation AI — Runbook
 
-> 📐 **Full walkthrough:** every step, screen, setting and test is detailed in my Excalidraw board:
-> https://link.excalidraw.com/l/9hD7S5FgGWN/7vcS89NuY35
->
-> I drew every step of this board myself and tested each one from top to bottom. In a generative AI world, anyone can generate code and docs. My goal here was to actually understand how every piece works and why, not just to make it run.
-
-Keyless AWS infrastructure delivery with **GitHub → HCP Terraform (OPA) → AWS**, tracked end to end in **Jira** with notifications in **Slack**.
-
-No AWS access keys are stored anywhere. HCP Terraform proves who it is with a short-lived OIDC token, and AWS trusts that token to hand out temporary credentials for each run.
-
-### AWS modules used
-
-| Stack | Module | What it builds |
-|-------|--------|----------------|
-| `network/` | [`terraform-aws-modules/vpc/aws`](https://registry.terraform.io/modules/terraform-aws-modules/vpc/aws) | VPC (`open-innovation-ai-vpc`), subnets and NAT gateway |
-| `security/` | plain `aws_security_group` resources | Security groups for the jump host, nginx, and RKE2 nodes |
-| `compute/` | [`terraform-aws-modules/ec2-instance/aws`](https://registry.terraform.io/modules/terraform-aws-modules/ec2-instance/aws) | EC2 instances: jump host, nginx, 3 RKE2 masters, 1 RKE2 worker |
-| `compute/` | [`terraform-aws-modules/key-pair/aws`](https://registry.terraform.io/modules/terraform-aws-modules/key-pair/aws) | SSH key pairs for the instances |
-
----
-
-## High-Level Overview
-
-<img width="1568" height="536" alt="High-level overview: GitHub → HCP Terraform (OPA) → AWS OIDC" src="https://github.com/user-attachments/assets/f04be46d-19f9-4037-9c5d-df21d6b62506" />
-
-| # | Step |
-|---|------|
-| 1 | Developer commits and pushes Terraform changes to GitHub |
-| 2 | GitHub webhook triggers a run in the HCP Terraform workspace |
-| 3–4 | For **plan**, HCP Terraform sends `AssumeRoleWithWebIdentity` to AWS with its signed JWT |
-| 5 | AWS IAM OIDC provider validates the token |
-| 6–7 | `tfc-plan-role` (read-only) is assumed and Terraform reads AWS resources to build the plan |
-| 8 | HCP Terraform receives the generated plan |
-| — | **OPA policy check** runs on the plan (e.g. deny `0.0.0.0/0` inbound on security groups / jump host) |
-| 9–11 | Only if policy **passes**: a second token is requested and `tfc-apply-role` (read/write) is assumed |
-| 12 | Terraform applies the change to AWS. If policy is **denied**, the run stops and apply fails |
-
-### Very important concept: two tokens
-
-- **Plan token** is always generated, *before* the policy check. Terraform needs AWS read access to produce a plan, and OPA can only check a plan that already exists.
-- **Apply token** is generated **only if the policy passes**. If OPA fails, the run stops in HCP Terraform and the apply token is never created.
-
----
-
-## Infra Change Workflow (Request → Done)
-
-<img width="1480" height="812" alt="Infra change workflow: Jira → GitHub → HCP Terraform (OPA) → Slack" src="https://github.com/user-attachments/assets/da2ecc75-b915-4b88-88bd-aeef07bae157" />
-
-| Step | Tool | What happens | Jira status |
-|------|------|--------------|-------------|
-| 1. Request | Jira | Create a change request ticket (e.g. `KAN-5`) | To Do |
-| 2. Develop & PR | GitHub | Create branch `feature/KAN-5-...` and open a PR whose title contains the key | Awaiting PR → Plan In Progress |
-| 3. Plan + OPA | HCP Terraform | Speculative plan runs and OPA policies are checked | Awaiting Approval (pass) / Plan Failed (deny) |
-| 4. Review & Merge | GitHub | Review the plan, approve, merge PR to `main` | — |
-| 5. Apply | HCP Terraform | Plan + apply on `main` (auto-apply **off**, manual confirm) | Deploying |
-| 6. Complete | Jira + Slack | Apply succeeded → ticket moves to Done | Done / Deployment Failed |
-
-Every status change posts to the Slack channel `#devops-change-requests`.
-
-**How the ticket is linked:** the Jira key (e.g. `KAN-5`) must appear in the branch name and PR title. GitHub links it to Jira automatically, and Jira automation finds the ticket from the HCP run message with a JQL like `key = {{webhookData.run_message.match("([A-Z]+-\d+)")}}`.
-
-### Example: full successful flow
-
-1. Jira: create `KAN-5` (To Do)
-2. Branch `feature/KAN-5-remove-ssh-test` — remove `ssh_from_internet` from `security/terraform.tfvars`
-3. PR `KAN-5: remove OPA test SSH rule` → **Plan In Progress** + Slack "PR received"
-4. HCP plan → Needs Confirmation → **Awaiting Approval** + Slack "approval required"
-5. Merge PR to `main`
-6. HCP: Confirm & Apply → **Deploying** → **Done** + Slack "deployment successful"
-
----
-
-## Repository Layout
+RKE2 on AWS, built with Terraform (HCP) + Ansible, apps shipped with GitHub Actions + Argo CD.
 
 ```
-.
-├── runner/     # empty starter workspace — only job is to kick off the chain
-├── network/    # VPC, subnets  → outputs vpc_id, subnet ids
-├── security/   # security groups (needs vpc_id from network)
-└── compute/    # EC2 (needs subnet id from network + SG id from security)
+                     internet
+                        │
+        https *.kst-devops.com  +  api.kst-devops.com:6443
+                        │
+                ┌───────▼────────┐        ┌──────────────┐
+                │ nginx (public) │        │ jump (public)│── SSH to everything
+                └───────┬────────┘        └──────────────┘
+   rancher ──▶ ingress-nginx :80
+   argocd, oia ──▶ istio gateway :30080
+   api :6443, join :9345 ──▶ masters
+                        │
+     ┌──────────────────▼───────────────────┐
+     │ RKE2 (private subnets)               │
+     │ master-1 / master-2 / master-3 (HA)  │
+     │ worker-1                             │
+     └──────────────────────────────────────┘
 ```
 
-### Multi-workspace chain
+| Folder | What |
+|---|---|
+| `network/` `security/` `compute/` | Terraform, one HCP workspace each |
+| `ansible/` | nginx + Let's Encrypt, RKE2, Argo CD |
+| `app/` | Python backend + frontend |
+| `gitops/` | what Argo CD deploys (dev / qa / prod) |
+| `.github/workflows/ci.yml` | CI/CD pipeline |
+| `platform/` | Istio, Prometheus, Kiali, Jaeger (manual install) |
+| `platform/demo/` | HPA / PDB / traffic demos |
 
-HCP Terraform has no "run all" button, so `workspace-runner-admin` is the single starting point:
+---
+
+## Step 1 — Infrastructure (HCP Terraform)
+
+Workspaces in org `kst-cie`, all on branch `open-innovation-ai`. Apply **in this order**:
+
+1. **network** → VPC, subnets, NAT gateway, Route53 zone `kst-devops.com`
+2. **security** → security groups + IAM role for nginx (certbot)
+3. **compute** → 6 servers, SSH key, DNS records (`rancher`, `api`, `argocd`, `oia`)
+
+Notes:
+- Each workspace reads the outputs of the one before, so the order matters.
+- `security` is excluded from the policy set `hce-policy` (the jump host allows SSH from `0.0.0.0/0`).
+- The `runner` workspace is disabled.
+
+## Step 2 — DNS (once)
+
+Copy the 4 `name_servers` from the **network** outputs into Namecheap → kst-devops.com → Nameservers → **Custom DNS**.
+
+```bash
+dig +short NS kst-devops.com        # should show awsdns-...
+dig +short api.kst-devops.com       # should show the nginx public IP
+```
+
+## Step 3 — SSH key
+
+HCP → compute → States → download the latest state, then:
+
+```bash
+jq -r '.outputs.private_key.value' state.json > ~/.ssh/open-innovation-ai.pem
+chmod 400 ~/.ssh/open-innovation-ai.pem
+rm state.json
+```
+
+Server IPs are in the compute **Outputs** (`public_ips`, `private_ips`).
+
+## Step 4 — Ansible: nginx + RKE2
+
+If servers were recreated, update the IPs in `ansible/inventory/hosts.ini`
+(and the jump / nginx IPs in `group_vars/all.yml` and `group_vars/k8s_cluster.yml`).
+
+```bash
+cd ansible
+ansible-galaxy install -r requirements.yml
+ansible all -m ping                          # 6 x pong
+
+export RKE2_TOKEN=$(openssl rand -hex 32)    # first install only. SAVE IT. UPPERCASE name.
+ansible-playbook site.yml
+```
+
+`site.yml` does:
+1. nginx: certbot gets a wildcard cert `*.kst-devops.com` (DNS challenge in Route53), nginx config
+2. RKE2: 3 masters (HA) + 1 worker, API name `api.kst-devops.com`
+
+Re-running later? Use the **same** token:
+
+```bash
+export RKE2_TOKEN=$(ansible rke2-master-1 -b -m shell -a "cat /var/lib/rancher/rke2/server/token" | tail -1)
+```
+
+## Step 5 — kubectl
+
+`site.yml` saves `ansible/kubeconfig.yaml`. Add it to your kube config as context `open-innovation-ai`:
+
+```bash
+sed -e 's/: default$/: open-innovation-ai/' -e 's/^- name: default$/- name: open-innovation-ai/' \
+    kubeconfig.yaml > /tmp/oia.yaml
+KUBECONFIG=~/.kube/config:/tmp/oia.yaml kubectl config view --flatten > /tmp/merged.yaml
+mv /tmp/merged.yaml ~/.kube/config && rm /tmp/oia.yaml
+
+kubectl config set-cluster open-innovation-ai --server=https://api.kst-devops.com:6443
+kubectl config use-context open-innovation-ai
+kubectl get nodes                            # 4 x Ready
+```
+
+## Step 6 — Argo CD
+
+```bash
+cd ansible && ansible-playbook argocd.yml
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
+```
+
+Creates 3 apps: `oia-dev`, `oia-qa`, `oia-prod` (watch `gitops/envs/<env>` on `main`).
+UI: https://argocd.kst-devops.com (after Step 8), user `admin`.
+
+## Step 7 — CI/CD
 
 ```
-runner  ──run trigger──▶  network  ──▶  security  ──▶  compute
+PR    ──▶ gitleaks · pytest · docker build · trivy                    (nothing pushed)
+main  ──▶ same + push ghcr.io · cosign sign · SBOM
+      ──▶ digest -> gitops/envs/dev ──▶ qa ──▶ ⏸ approval ──▶ prod      (Argo CD syncs each)
 ```
 
-Each workspace runs after the one before it applies, so the order is always right. Outputs are passed with **remote state sharing**, shared only with the workspaces that need them:
+One-time setup in GitHub:
+1. Settings → Environments → create `qa` and `prod`. On `prod` add yourself as **Required reviewer**.
+2. After the first run on `main`: Packages → `oia-backend`, `oia-frontend` → make **public**.
 
-- `network` → shared with `security` and `compute`
-- `security` → shared with `compute`
+Then: open a PR → checks run → merge → watch Actions → approve `prod`.
 
----
+Key points:
+- Images are **distroless** (`gcr.io/distroless/python3-debian13:nonroot`): no shell, non-root.
+- Deploy by **digest** (`@sha256:...`), so dev, qa and prod run byte-for-byte the same image.
+- CI never touches the cluster. It commits to git, Argo CD pulls.
 
-## Setup Summary
+Verify a signature:
 
-### AWS side
+```bash
+cosign verify ghcr.io/rosaliei/oia-backend@sha256:<digest> \
+  --certificate-identity-regexp 'github.com/rosaliei' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
 
-1. **IAM OIDC provider** (once per account)
-   - Provider URL: `https://app.terraform.io`
-   - Audience: `aws.workload.identity`
-2. **`tfc-plan-role`** — Web identity trust, `Run Phase: plan`, read-only policy
-3. **`tfc-apply-role`** — Web identity trust, `Run Phase: apply`, write policy
+## Step 8 — Istio, Prometheus, Kiali, Jaeger
 
-### HCP Terraform side
+Follow [platform/README.md](platform/README.md). Short version:
 
-1. Organization `kst-cie` → project `gitlab-hcp-terraform-oidc-aws`
-2. Workspaces: `workspace-runner-admin`, `network`, `security`, `compute` (VCS-driven, working directory = folder name)
-3. **Variable set** scoped to the project (environment variables):
+```bash
+cd platform
+istioctl install -f istio/istio.yaml -y                 # demo profile, gateway NodePort 30080
+kubectl apply -f istio/mtls-strict.yaml
+helm install monitoring prometheus-community/kube-prometheus-stack -n monitoring --create-namespace -f monitoring/values.yaml
+kubectl apply -f monitoring/istio-monitoring.yaml
+kubectl apply -f istio/gateway.yaml                     # oia + argocd hosts
+```
 
-   | Key | Value |
-   |-----|-------|
-   | `TFC_AWS_PROVIDER_AUTH` | `true` |
-   | `TFC_AWS_PLAN_ROLE_ARN` | `arn:aws:iam::<ACCOUNT_ID>:role/tfc-plan-role` |
-   | `TFC_AWS_APPLY_ROLE_ARN` | `arn:aws:iam::<ACCOUNT_ID>:role/tfc-apply-role` |
+## Step 9 — Demos
 
-   The AWS provider block has **no access keys and no `assume_role`** — HCP Terraform supplies the credentials.
-4. **OPA policy** `deny-public-ssh` attached through a policy set (denies `0.0.0.0/0` and `::/0` inbound)
-5. **Notifications** per workspace → Jira automation incoming webhooks
-6. Apply method set to **Manual** so plans wait for approval
+Follow [platform/demo/README.md](platform/demo/README.md):
 
-### Jira / GitHub / Slack
-
-1. Jira Kanban space with statuses: To Do, Awaiting PR, Plan In Progress, Awaiting Approval, Plan Failed, Deploying, Done, Deployment Failed
-2. **GitHub for Atlassian** app connects the repo to Jira
-3. **Slack app** with the `incoming-webhook` scope on `#devops-change-requests`
-4. **Jira automation rules** (incoming webhook triggers): PR opened, Plan ready for approval, Plan/OPA failed, Apply successful
-5. **GitHub repo webhook** → Jira automation for PR events
-
----
-
-## Integrations Inventory
-
-| Type | Integration | Purpose |
-|------|-------------|---------|
-| **OIDC** | HCP Terraform → AWS IAM | Keyless AWS credentials for plan and apply |
-| **OAuth** | GitHub ↔ HCP Terraform (OAuth App) | VCS connection, triggers runs |
-| **OAuth** | GitHub ↔ Jira (GitHub for Atlassian) | Links branches / PRs to tickets |
-| **OAuth** | Slack app (`incoming-webhook`) | Jira posts status updates to Slack |
-| Token | Team API token (`TFE_TOKEN`) | Used by `workspace-runner-admin` |
-| Webhook | GitHub → Jira automation | PR events update tickets |
-| Webhook | HCP Terraform notifications → Jira | Run results update tickets |
-
-**Total: 1 OIDC + 3 OAuth**, plus 1 API token and 2 webhook-secret integrations.
+```bash
+cd platform/demo
+kubectl apply -f hpa-pdb.yaml
+./load.sh hpa      # HPA scales 2 -> 6
+./load.sh app      # traffic to oia.kst-devops.com -> see it in Kiali
+./load.sh stop
+```
 
 ---
 
-## Implementation Patterns Spotted (Least Privilege)
+## URLs
 
-What works today, and where permissions are wider than they need to be.
+| URL | Goes to |
+|---|---|
+| https://oia.kst-devops.com | app (oia-dev) via Istio gateway |
+| https://argocd.kst-devops.com | Argo CD via Istio gateway |
+| https://rancher.kst-devops.com | ingress-nginx (for Rancher later) |
+| https://api.kst-devops.com:6443 | Kubernetes API (kubectl) |
 
-| Area | Current | Risk | Recommended |
-|------|---------|------|-------------|
-| `tfc-apply-role` policy | AdministratorAccess | Any run can change anything in the account | Limit to services Terraform manages (EC2, VPC, SG) + permissions boundary |
-| OIDC trust (both roles) | `Workspace Name: *` | Any workspace in the project can assume the role | Pin `sub` to `network`, `security`, `compute` — or one role per workspace |
-| `tfc-plan-role` policy | ReadOnlyAccess | Can read S3 objects, SSM parameters, etc. | Custom read policy for only what the plan needs |
-| GitHub OAuth App ↔ HCP | `repo` scope: read/write **all** public & private repos, admin on webhooks | Token compromise exposes every repo | Use HCP Terraform's **GitHub App** installed on this repo only |
-| `TFE_TOKEN` (runner) | Owners team / "Manage workspaces" | Admin-level token in a workspace variable | Dedicated team scoped to this one project (queue runs, read outputs) |
-| GitHub for Atlassian | All repos | Jira can read more than it needs | "Only select repositories" |
-| Jira `org-admins` group | — | Too many admins | Keep membership minimal |
-| Variable set | Scoped to whole project | Every workspace in project gets role ARNs | Scope per workspace |
-| Webhook secrets | Secret is part of the URL | Anyone with the URL can post fake events | Treat URLs as secrets, store in a secret manager, rotate if exposed |
+## Troubleshooting
 
-✅ **Already good**
+| Problem | Cause | Fix |
+|---|---|---|
+| security/compute: `Unsupported attribute "vpc_id"` | network not applied yet (or HCP running old code) | push, apply network first |
+| `Provider configuration not present` | old resources in state use a provider that was removed | add the provider back for one apply, then remove it |
+| security run blocked by `deny-public-ssh` | OPA policy | security workspace is excluded in `hce-policy` |
+| `ansible-playbook site.yml` hangs | `RKE2_TOKEN` empty / lowercase → nodes get `token: ""` | export the real token (Step 4), re-run, then `systemctl restart rke2-agent` on the worker |
+| `kubectl` TLS handshake timeout | old SSH tunnel stuck | use `api.kst-devops.com:6443` (Step 5) |
+| CI: Trivy fails | base image has fixed HIGH/CRITICAL CVEs | rebuild; use a maintained base (distroless **debian13**, not debian12) |
+| pods stuck `Init` with Istio | `runAsNonRoot` at pod level blocks `istio-init` | keep it on the container only (already done) |
+| pods `Pending` | 4 GB nodes are full | worker → `t3.large` in `compute/terraform.tfvars` |
 
-- No static AWS keys — OIDC dynamic credentials only
-- Separate plan (read) and apply (write) roles, split by `Run Phase`
-- Apply token only issued after OPA passes
-- Slack app has a single scope on a single channel
-- Remote state shared only with the workspaces that need it
-- Auto-apply off, so humans approve before changes land
+## Tear down
 
-### Next steps
+1. HCP: destroy **compute → security → network** (reverse order).
+2. Namecheap: set nameservers back to Namecheap BasicDNS if you still need the domain elsewhere.
 
-- [ ] Replace AdministratorAccess on `tfc-apply-role` with a scoped policy
-- [ ] Pin OIDC trust `sub` to specific workspaces
-- [ ] Move GitHub ↔ HCP connection from OAuth App to GitHub App (single repo)
-- [ ] Downscope `TFE_TOKEN` to a project-level team
-- [ ] Rotate Jira webhook secrets that appear in screenshots / diagrams
+## Not production-ready (on purpose, interview demo)
+
+- One nginx = single point of failure → AWS NLB or 2 nginx.
+- SSH (22) and API (6443) open to `0.0.0.0/0` → restrict to your IP.
+- nginx has no Elastic IP → public IP changes on stop/start.
+- `RKE2_TOKEN` lives in your shell → `ansible-vault` or a secret manager.
 
 ---
 
-## Security Notes
-
-- Never commit AWS keys, `TFE_TOKEN`, Jira webhook URLs, or Slack webhook URLs.
-- Webhook URLs contain secrets — keep them out of diagrams, screenshots, and issues.
+HCP Terraform + AWS OIDC + Jira/Slack change workflow: [docs/hcp-oidc-workflow.md](docs/hcp-oidc-workflow.md)
