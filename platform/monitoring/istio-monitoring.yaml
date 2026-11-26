@@ -1,0 +1,33 @@
+# Tell Prometheus to scrape Istio. Apply AFTER kube-prometheus-stack (needs its CRDs).
+
+# istiod (control plane) metrics, port 15014
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: istiod
+  namespace: istio-system
+spec:
+  selector:
+    matchLabels:
+      istio: pilot
+  endpoints:
+    - port: http-monitoring
+      interval: 15s
+---
+# every sidecar (envoy) metrics, port 15090: requests, latency, errors per service
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: envoy-sidecars
+  namespace: istio-system
+spec:
+  selector:
+    matchExpressions:
+      - key: security.istio.io/tlsMode # label Istio puts on every pod with a sidecar
+        operator: Exists
+  namespaceSelector:
+    any: true
+  podMetricsEndpoints:
+    - port: http-envoy-prom
+      path: /stats/prometheus
+      interval: 15s

@@ -1,0 +1,28 @@
+# Only accept mTLS traffic inside the app namespaces.
+# Pods without a sidecar can no longer call these pods.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: oia-dev
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: oia-qa
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: oia-prod
+spec:
+  mtls:
+    mode: STRICT

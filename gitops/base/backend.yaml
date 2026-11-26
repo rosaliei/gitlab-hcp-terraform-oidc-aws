@@ -10,11 +10,10 @@ spec:
     metadata:
       labels: { app: backend }
     spec:
-      securityContext:
-        runAsNonRoot: true # distroless :nonroot image runs as uid 65532
       containers:
         - name: backend
           securityContext:
+            runAsNonRoot: true # distroless :nonroot image runs as uid 65532
             allowPrivilegeEscalation: false
             capabilities:
               drop: [ALL]

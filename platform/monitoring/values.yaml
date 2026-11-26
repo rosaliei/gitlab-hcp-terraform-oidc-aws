@@ -1,0 +1,29 @@
+# Helm values for prometheus-community/kube-prometheus-stack
+# (Prometheus + Alertmanager + Grafana + node-exporter + kube-state-metrics)
+
+prometheus:
+  prometheusSpec:
+    retention: 3d
+    # pick up EVERY ServiceMonitor / PodMonitor in the cluster
+    # (by default it only picks up ones labelled with this helm release)
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+
+alertmanager:
+  alertmanagerSpec:
+    retention: 24h
+
+# RKE2 runs these on 127.0.0.1 only, Prometheus cannot reach them.
+# Turned off so they do not show up as "down" targets.
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
