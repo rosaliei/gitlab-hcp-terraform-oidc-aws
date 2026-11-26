@@ -1,0 +1,2 @@
+# Domain served by nginx with a Let's Encrypt certificate
+domain: rancher.kst-devops.com

@@ -11,6 +11,7 @@ ansible/
 │   └── group_vars/
 │       ├── all.yml              # ssh user, key, go through jump host
 │       ├── jump.yml             # jump host: connect directly
+│       ├── nginx.yml            # domain for the Let's Encrypt certificate
 │       └── k8s_cluster.yml      # RKE2 settings (lablabs.rke2 role)
 ├── templates/nginx.conf.j2      # nginx = TCP load balancer in front of RKE2
 └── site.yml                     # the playbook: nginx first, then RKE2
@@ -36,13 +37,22 @@ so `group_vars/all.yml` sends SSH through the jump host (`ProxyCommand`).
 ## How the cluster is wired
 
 ```
-internet ──80/443──▶ nginx ──80/443──▶ ingress-nginx on every node
+internet ──https──▶ nginx (TLS, Let's Encrypt) ──http:80──▶ ingress-nginx on every node
                        │
  rke2 nodes ──6443/9345──▶ nginx ──6443/9345──▶ master-1/2/3
 ```
 
 `rke2_api_ip` is nginx's private IP. That is why nginx is set up first:
 master-2 and master-3 join the cluster through it.
+
+## HTTPS (Let's Encrypt)
+
+- DNS for kst-devops.com is in Route53 (network workspace). `rancher.kst-devops.com` points to nginx (compute workspace).
+- nginx has an IAM role that may only edit that Route53 zone (security workspace).
+- `certbot --dns-route53` on nginx adds the `_acme-challenge` TXT record, Let's Encrypt checks it, certbot deletes it.
+- `certbot.timer` renews the certificate automatically and reloads nginx. Nothing to do by hand.
+
+Check renewal works: `ansible nginx -b -m shell -a "certbot renew --dry-run"`
 
 ## Run it
 

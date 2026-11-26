@@ -138,3 +138,51 @@ resource "aws_vpc_security_group_egress_rule" "rke2_out" {
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "-1"
 }
+
+################################################################################
+# NGINX IAM ROLE
+#   lets certbot on nginx add the _acme-challenge TXT record in Route53
+#   (only in the kst-devops.com zone)
+################################################################################
+
+resource "aws_iam_role" "nginx" {
+  provider = aws.singapore
+  name     = "nginx-certbot"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ec2.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "nginx_route53" {
+  provider = aws.singapore
+  name     = "route53-certbot"
+  role     = aws_iam_role.nginx.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["route53:ListHostedZones", "route53:GetChange"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = "route53:ChangeResourceRecordSets"
+        Resource = "arn:aws:route53:::hostedzone/${data.tfe_outputs.network.values.zone_id}"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_instance_profile" "nginx" {
+  provider = aws.singapore
+  name     = "nginx-certbot"
+  role     = aws_iam_role.nginx.name
+}

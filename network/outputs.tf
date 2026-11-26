@@ -20,3 +20,13 @@ output "private_subnets" {
   description = "List of IDs of private subnets in the VPC"
   value       = module.vpc.private_subnets
 }
+
+output "zone_id" {
+  description = "Route53 zone ID for kst-devops.com"
+  value       = aws_route53_zone.main.zone_id
+}
+
+output "name_servers" {
+  description = "Put these 4 into Namecheap as Custom DNS"
+  value       = aws_route53_zone.main.name_servers
+}

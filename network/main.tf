@@ -15,3 +15,10 @@ module "vpc" {
   enable_nat_gateway = true # private subnets (RKE2 nodes) need internet to install packages
   single_nat_gateway = var.single_nat_gateway
 }
+
+# DNS zone for kst-devops.com.
+# After the first apply, copy the name_servers output into Namecheap (Domain -> Nameservers -> Custom DNS).
+resource "aws_route53_zone" "main" {
+  provider = aws.singapore
+  name     = "kst-devops.com"
+}

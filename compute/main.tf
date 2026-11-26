@@ -28,6 +28,9 @@ module "ec2_instance" {
   create_security_group       = false # use only the SGs from the security workspace
   vpc_security_group_ids      = [data.tfe_outputs.security.values[each.value.security_group]]
 
+  # only nginx gets the IAM role (certbot -> Route53)
+  iam_instance_profile = each.value.role == "nginx" ? data.tfe_outputs.security.values.nginx_instance_profile : null
+
   root_block_device = {
     size = each.value.disk_size
     type = "gp3"
@@ -51,4 +54,17 @@ module "key_pair" {
 
   key_name           = var.key_name
   create_private_key = true
+}
+
+###############################################################################################################
+### DNS: rancher.kst-devops.com -> nginx public IP ###
+###############################################################################################################
+
+resource "aws_route53_record" "rancher" {
+  provider = aws.singapore
+  zone_id  = data.tfe_outputs.network.values.zone_id
+  name     = "rancher.kst-devops.com"
+  type     = "A"
+  ttl      = 300
+  records  = [module.ec2_instance["nginx"].public_ip]
 }
