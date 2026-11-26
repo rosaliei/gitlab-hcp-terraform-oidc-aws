@@ -1,0 +1,71 @@
+# HPA + PDB demo in the default namespace.
+#   kubectl apply -f platform/demo/hpa-pdb.yaml
+#
+# php-apache burns CPU on every request -> HPA adds pods.
+# PDB keeps at least 1 pod running during node drain / upgrades.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: php-apache
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: php-apache }
+  template:
+    metadata:
+      labels: { app: php-apache }
+    spec:
+      containers:
+        - name: php-apache
+          image: registry.k8s.io/hpa-example
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 200m # HPA % is measured against this
+            limits:
+              cpu: 500m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: php-apache
+  namespace: default
+spec:
+  selector: { app: php-apache }
+  ports:
+    - port: 80
+---
+# Scale between 2 and 6 pods, target 50% of the CPU request (= 100m per pod)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: php-apache
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: php-apache
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+---
+# During a voluntary disruption (kubectl drain, node upgrade) at least 1 pod must stay up
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: php-apache
+  namespace: default
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app: php-apache }
