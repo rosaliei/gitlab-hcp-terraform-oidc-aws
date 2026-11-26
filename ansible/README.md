@@ -77,16 +77,28 @@ When it finishes, `kubeconfig.yaml` is in this folder (gitignored).
 
 ## Use kubectl from your Mac
 
-The API (6443) is not open to the internet. Open a tunnel through the jump host:
+The API (6443) is not open to the internet. SSH into nginx (through the jump host)
+and forward your local 6443 to nginx's own 6443:
 
 ```bash
 # terminal 1: keep this open
-ssh -i ~/.ssh/open-innovation-ai.pem -L 6443:10.0.1.203:6443 ubuntu@47.129.101.131
+ssh -i ~/.ssh/open-innovation-ai.pem \
+  -o ProxyCommand="ssh -W %h:%p -i ~/.ssh/open-innovation-ai.pem ubuntu@47.129.101.131" \
+  -L 6443:127.0.0.1:6443 ubuntu@10.0.1.203
 
-# terminal 2
-sed -i '' 's#server: https://.*:6443#server: https://127.0.0.1:6443#' kubeconfig.yaml
-export KUBECONFIG=$PWD/kubeconfig.yaml
+# terminal 2 (context open-innovation-ai points to https://127.0.0.1:6443)
+kubectl config use-context open-innovation-ai
 kubectl get nodes
+```
+
+To add the context after a fresh install, rename `default` and point it to the tunnel:
+
+```bash
+sed -e 's#server: https://10.0.1.203:6443#server: https://127.0.0.1:6443#' \
+    -e 's/: default$/: open-innovation-ai/' -e 's/^- name: default$/- name: open-innovation-ai/' \
+    kubeconfig.yaml > /tmp/oia.yaml
+KUBECONFIG=~/.kube/config:/tmp/oia.yaml kubectl config view --flatten > /tmp/merged.yaml
+mv /tmp/merged.yaml ~/.kube/config && rm /tmp/oia.yaml
 ```
 
 ## Useful commands
