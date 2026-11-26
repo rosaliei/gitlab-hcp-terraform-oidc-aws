@@ -2,18 +2,13 @@
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  # minimal = only istiod (control plane), no ingress gateway.
-  # (our traffic comes in through nginx + ingress-nginx)
-  profile: minimal
+  # demo = istiod + ingress gateway + egress gateway, 100% tracing, access logs.
+  # Good for showing everything, too heavy / too open for prod.
+  profile: demo
 
-  meshConfig:
-    # every sidecar logs each request -> kubectl logs <pod> -c istio-proxy
-    accessLogFile: /dev/stdout
-
-  components:
-    pilot:
-      k8s:
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
+  values:
+    gateways:
+      istio-ingressgateway:
+        # RKE2 on EC2 has no cloud LoadBalancer controller, a LoadBalancer
+        # service would stay <pending>. NodePort works, and port-forward too.
+        type: NodePort
