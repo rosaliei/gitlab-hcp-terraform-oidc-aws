@@ -8,3 +8,10 @@ provider "aws" {
   alias  = "singapore"
   region = "ap-southeast-1"
 }
+
+# TEMPORARY: only needed so Terraform can destroy old account resources in Tokyo.
+# Remove this after this workspace has been applied once.
+provider "aws" {
+  alias  = "tokyo"
+  region = "ap-northeast-1"
+}
