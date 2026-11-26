@@ -50,9 +50,3 @@ module "jump_security_group" {
     Environment = "open-innovation-ai"
   }
 }
-
-# Renamed from customer_profile_jump_security_group. Same SG, no destroy.
-moved {
-  from = module.customer_profile_jump_security_group
-  to   = module.jump_security_group
-}
