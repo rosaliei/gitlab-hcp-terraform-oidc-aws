@@ -15,25 +15,7 @@ module "customer_profile_vpc" {
 
   public_subnets     = var.customer_profile_vpc_public_subnets
   private_subnets    = var.customer_profile_vpc_private_subnets
+  enable_nat_gateway = true # private subnets (RKE2 nodes) need internet to install packages
   single_nat_gateway = var.customer_profile_single_nat_gateway
-}
-
-
-module "account_vpc" {
-  source  = "terraform-aws-modules/vpc/aws"
-  version = "6.7.3" # pin to exact version - HashiCorp Recommendation
-
-  providers = {
-    aws = aws.tokyo
-  }
-
-  name = var.account_vpc_name
-  cidr = var.account_vpc_cidr
-  azs  = var.account_vpc_azs
-
-  public_subnets     = var.account_vpc_public_subnets
-  private_subnets    = var.account_vpc_private_subnets
-  single_nat_gateway = var.account_single_nat_gateway
-
 }
 

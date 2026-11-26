@@ -1,13 +1,21 @@
 ################################################################################
-# customer_profile EC2 security group
+# nginx security group (load balancer in front of RKE2)
 ################################################################################
 
-customer_profile_sg_name        = "customer-profile-ec2-sg"
-customer_profile_sg_description = "Customer profile EC2 - HTTPS from public, SSH from jump host only"
+nginx_sg_name        = "nginx-sg"
+nginx_sg_description = "nginx - HTTP/HTTPS from public, SSH from jump host only"
 
-# Public -> customer profile EC2: port 443 only
-# Jump host -> customer profile EC2: port 22 only
-customer_profile_ingress_rules = {
+# Public -> nginx: port 80 and 443
+# Jump host -> nginx: port 22
+nginx_ingress_rules = {
+  http_from_internet = {
+    description = "HTTP from internet"
+    cidr_ipv4   = "0.0.0.0/0"
+    ip_protocol = "tcp"
+    from_port   = 80
+    to_port     = 80
+  }
+
   https_from_internet = {
     description = "HTTPS from internet"
     cidr_ipv4   = "0.0.0.0/0"
@@ -25,10 +33,10 @@ customer_profile_ingress_rules = {
   }
 }
 
-# Customer profile EC2 -> internet: allow all outbound
-customer_profile_egress_rules = {
+# nginx -> anywhere (RKE2 nodes, internet)
+nginx_egress_rules = {
   all_to_internet = {
-    description = "Allow all outbound to internet"
+    description = "Allow all outbound"
     cidr_ipv4   = "0.0.0.0/0"
     ip_protocol = "-1"
   }
@@ -53,37 +61,8 @@ customer_profile_jump_ingress_rules = {
   }
 }
 
-# Jump host -> internet (and therefore -> customer profile EC2): allow all outbound
+# Jump host -> anywhere (internet, nginx, RKE2 nodes): allow all outbound
 customer_profile_jump_egress_rules = {
-  all_to_internet = {
-    description = "Allow all outbound to internet"
-    cidr_ipv4   = "0.0.0.0/0"
-    ip_protocol = "-1"
-  }
-}
-
-################################################################################
-# account security group (Tokyo)
-################################################################################
-
-account_sg_name        = "account-sg"
-account_sg_description = "Account - HTTPS from customer profile VPC only"
-
-# customer_profile (Singapore) -> account: port 443 only.
-# Cross-region security group references are not supported by AWS,
-# so the customer_profile VPC CIDR is used as the source.
-account_ingress_rules = {
-  https_from_customer_profile = {
-    description = "HTTPS from customer profile VPC"
-    cidr_ipv4   = "10.0.0.0/16"
-    ip_protocol = "tcp"
-    from_port   = 443
-    to_port     = 443
-  }
-}
-
-# Account -> internet: allow all outbound
-account_egress_rules = {
   all_to_internet = {
     description = "Allow all outbound to internet"
     cidr_ipv4   = "0.0.0.0/0"
