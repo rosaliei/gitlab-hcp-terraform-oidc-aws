@@ -12,27 +12,27 @@ stream {
   # Kubernetes API -> masters
   upstream rke2_api {
 {% for host in groups['masters'] %}
-    server {{ hostvars[host].private_ip_address }}:6443;
+    server {{ hostvars[host].ansible_host }}:6443;
 {% endfor %}
   }
 
   # RKE2 join/register -> masters
   upstream rke2_register {
 {% for host in groups['masters'] %}
-    server {{ hostvars[host].private_ip_address }}:9345;
+    server {{ hostvars[host].ansible_host }}:9345;
 {% endfor %}
   }
 
   # Web traffic -> ingress controller on every node
   upstream ingress_http {
 {% for host in groups['k8s_cluster'] %}
-    server {{ hostvars[host].private_ip_address }}:80;
+    server {{ hostvars[host].ansible_host }}:80;
 {% endfor %}
   }
 
   upstream ingress_https {
 {% for host in groups['k8s_cluster'] %}
-    server {{ hostvars[host].private_ip_address }}:443;
+    server {{ hostvars[host].ansible_host }}:443;
 {% endfor %}
   }
 

@@ -8,12 +8,12 @@ rke2_token: "{{ lookup('env', 'RKE2_TOKEN') }}"
 rke2_ha_mode: true
 rke2_ha_mode_keepalived: false
 rke2_ha_mode_kubevip: false
-rke2_api_ip: "{{ nginx_ip }}"
+rke2_api_ip: 10.0.1.203   # nginx private IP
 
 # Extra names/IPs allowed in the API certificate
 rke2_additional_sans:
-  - "{{ nginx_ip }}"
-  - "{{ hostvars[groups['nginx'][0]].public_ip_address }}"
+  - 10.0.1.203      # nginx private IP
+  - 52.221.210.87   # nginx public IP
 
 rke2_cni: [canal]
 rke2_ingress_controller: ingress-nginx
