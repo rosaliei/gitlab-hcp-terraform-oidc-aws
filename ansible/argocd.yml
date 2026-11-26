@@ -1,0 +1,28 @@
+# Install Argo CD on the cluster and create the 3 apps (dev, qa, prod).
+# Runs kubectl on rke2-master-1 (RKE2 ships kubectl + an admin kubeconfig there).
+- name: Argo CD
+  hosts: rke2-master-1
+  become: true
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+    PATH: /var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin
+  tasks:
+    - name: Create argocd namespace
+      ansible.builtin.shell: kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Install Argo CD
+      ansible.builtin.command: >-
+        kubectl apply -n argocd --server-side --force-conflicts
+        -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+    - name: Wait until Argo CD is ready
+      ansible.builtin.command: kubectl -n argocd rollout status deploy/argocd-server --timeout=300s
+
+    - name: Copy the apps file
+      ansible.builtin.copy:
+        src: ../gitops/argocd/apps.yaml
+        dest: /tmp/argocd-apps.yaml
+        mode: "0644"
+
+    - name: Create the dev / qa / prod apps
+      ansible.builtin.command: kubectl apply -f /tmp/argocd-apps.yaml

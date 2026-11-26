@@ -1,0 +1,180 @@
+# PR   -> gitleaks, test, build, trivy           (nothing is pushed)
+# main -> same + push, cosign sign, SBOM, then:
+#         dev  (auto)  -> qa (auto) -> prod (needs approval)
+#
+# "Deploy" = commit the new image digest into gitops/envs/<env>.
+# Argo CD sees the commit and syncs that environment.
+
+name: ci
+
+on:
+  pull_request:
+    paths: ["app/**", ".github/workflows/ci.yml"]
+  push:
+    branches: [main]
+    paths: ["app/**", ".github/workflows/ci.yml"]
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan repo for secrets
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:latest dir /repo --redact -v
+
+  # ---------------------------------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [backend, frontend]
+    defaults:
+      run:
+        working-directory: app/${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt pytest
+      - run: python -m pytest -v
+
+  # ---------------------------------------------------------------------------
+  build:
+    needs: [gitleaks, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push to ghcr.io
+      id-token: write # cosign keyless signing (GitHub OIDC)
+    strategy:
+      matrix:
+        app: [backend, frontend]
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/oia-${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t $IMAGE:${{ github.sha }} app/${{ matrix.app }}
+
+      - name: Trivy scan (fail on HIGH / CRITICAL)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest \
+            image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 $IMAGE:${{ github.sha }}
+
+      # ---- everything below runs only on main, not on PRs ----
+
+      - name: Push image
+        if: github.event_name == 'push'
+        id: push
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker push $IMAGE:${{ github.sha }}
+          DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' $IMAGE:${{ github.sha }} | cut -d@ -f2)
+          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+          echo "$DIGEST" > digest-${{ matrix.app }}.txt
+
+      - uses: sigstore/cosign-installer@v3
+        if: github.event_name == 'push'
+
+      - uses: anchore/sbom-action/download-syft@v0
+        if: github.event_name == 'push'
+
+      - name: Sign image + attach SBOM
+        if: github.event_name == 'push'
+        run: |
+          REF=$IMAGE@${{ steps.push.outputs.digest }}
+          cosign sign --yes $REF
+          syft $REF -o spdx-json=sbom-${{ matrix.app }}.spdx.json
+          cosign attest --yes --type spdxjson --predicate sbom-${{ matrix.app }}.spdx.json $REF
+
+      - name: Save digest + SBOM for the next jobs
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.app }}
+          path: |
+            digest-${{ matrix.app }}.txt
+            sbom-${{ matrix.app }}.spdx.json
+
+  # ---------------------------------------------------------------------------
+  deploy-dev:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Write new digests into gitops/envs/dev
+        run: |
+          for app in backend frontend; do
+            DIGEST=$(cat digest-$app.txt)
+            yq -i "(.images[] | select(.name == \"$app\")).digest = \"$DIGEST\"" gitops/envs/dev/kustomization.yaml
+          done
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git commit -am "dev: deploy ${GITHUB_SHA::7}"
+          git pull --rebase && git push
+
+  # ---------------------------------------------------------------------------
+  promote-qa:
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    environment: qa
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Copy digests dev -> qa
+        run: yq -i '.images = load("gitops/envs/dev/kustomization.yaml").images' gitops/envs/qa/kustomization.yaml
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git commit -am "qa: promote ${GITHUB_SHA::7}"
+          git pull --rebase && git push
+
+  # ---------------------------------------------------------------------------
+  promote-prod:
+    needs: promote-qa
+    runs-on: ubuntu-latest
+    environment: prod # approval gate: required reviewers on the "prod" environment
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Copy digests qa -> prod
+        run: yq -i '.images = load("gitops/envs/qa/kustomization.yaml").images' gitops/envs/prod/kustomization.yaml
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git commit -am "prod: promote ${GITHUB_SHA::7}"
+          git pull --rebase && git push

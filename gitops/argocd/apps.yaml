@@ -1,0 +1,63 @@
+# One Argo CD app per environment. Each one watches gitops/envs/<env> on main.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: oia-dev
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rosaliei/gitlab-hcp-terraform-oidc-aws.git
+    targetRevision: main
+    path: gitops/envs/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: oia-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: oia-qa
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rosaliei/gitlab-hcp-terraform-oidc-aws.git
+    targetRevision: main
+    path: gitops/envs/qa
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: oia-qa
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: oia-prod
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rosaliei/gitlab-hcp-terraform-oidc-aws.git
+    targetRevision: main
+    path: gitops/envs/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: oia-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
