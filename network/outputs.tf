@@ -1,45 +1,32 @@
 ################################################################################
-# customer_profile_vpc (Singapore)
+# VPC (Singapore)
 ################################################################################
-output "customer_profile_vpc_id" {
-  description = "The ID of the customer_profile VPC"
-  value       = module.customer_profile_vpc.vpc_id
+output "vpc_id" {
+  description = "The ID of the VPC"
+  value       = module.vpc.vpc_id
 }
 
-output "customer_profile_vpc_cidr_block" {
-  description = "The CIDR block of the customer_profile VPC"
-  value       = module.customer_profile_vpc.vpc_cidr_block
+output "vpc_cidr_block" {
+  description = "The CIDR block of the VPC"
+  value       = module.vpc.vpc_cidr_block
 }
 
-output "customer_profile_public_subnets" {
-  description = "List of IDs of public subnets in the customer_profile VPC"
-  value       = module.customer_profile_vpc.public_subnets
+output "public_subnets" {
+  description = "List of IDs of public subnets in the VPC"
+  value       = module.vpc.public_subnets
 }
 
-output "customer_profile_private_subnets" {
-  description = "List of IDs of private subnets in the customer_profile VPC"
-  value       = module.customer_profile_vpc.private_subnets
+output "private_subnets" {
+  description = "List of IDs of private subnets in the VPC"
+  value       = module.vpc.private_subnets
 }
 
-################################################################################
-# account_vpc (Tokyo)
-################################################################################
-output "account_vpc_id" {
-  description = "The ID of the account VPC"
-  value       = module.account_vpc.vpc_id
+output "zone_id" {
+  description = "Route53 zone ID for kst-devops.com"
+  value       = aws_route53_zone.main.zone_id
 }
 
-output "account_vpc_cidr_block" {
-  description = "The CIDR block of the account VPC"
-  value       = module.account_vpc.vpc_cidr_block
-}
-
-output "account_public_subnets" {
-  description = "List of IDs of public subnets in the account VPC"
-  value       = module.account_vpc.public_subnets
-}
-
-output "account_private_subnets" {
-  description = "List of IDs of private subnets in the account VPC"
-  value       = module.account_vpc.private_subnets
+output "name_servers" {
+  description = "Put these 4 into Namecheap as Custom DNS"
+  value       = aws_route53_zone.main.name_servers
 }

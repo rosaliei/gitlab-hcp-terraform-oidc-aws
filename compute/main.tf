@@ -1,33 +1,49 @@
 ###############################################################################################################
-### CUSTOMER PROFILE EC2 CREATION ###
+### EC2 CREATION (jump host, nginx, RKE2 masters, RKE2 worker) ###
 ###############################################################################################################
 
-module "customer_profile_ec2_instance" {
+locals {
+  subnets = {
+    public  = data.tfe_outputs.network.values.public_subnets
+    private = data.tfe_outputs.network.values.private_subnets
+  }
+}
+
+module "ec2_instance" {
   source = "terraform-aws-modules/ec2-instance/aws"
 
   providers = {
     aws = aws.singapore
   }
 
-  for_each = var.customer_profile_ec2_name
+  for_each = var.ec2s
   name     = "instance-${each.key}"
 
-  instance_type               = var.customer_profile_ec2_instance_type
-  ami_ssm_parameter           = var.customer_profile_ec2_ami_ssm_parameter
-  associate_public_ip_address = var.customer_profile_ec2_associate_public_ip_address
-  key_name                    = var.customer_profile_ec2_key_name
-  monitoring                  = var.customer_profile_ec2_monitoring
-  subnet_id                   = data.tfe_outputs.network.values.customer_profile_public_subnets[0]
+  instance_type               = each.value.instance_type
+  ami_ssm_parameter           = var.ami_ssm_parameter
+  associate_public_ip_address = each.value.public_ip
+  key_name                    = var.key_name
+  monitoring                  = var.monitoring
+  subnet_id                   = local.subnets[each.value.subnet][each.value.subnet_index]
   create_security_group       = false # use only the SGs from the security workspace
-  vpc_security_group_ids      = compact([try(data.tfe_outputs.security.values[var.customer_profile_ec2_security_groups[each.key]], null)])
+  vpc_security_group_ids      = [data.tfe_outputs.security.values[each.value.security_group]]
+
+  # only nginx gets the IAM role (certbot -> Route53)
+  iam_instance_profile = each.value.role == "nginx" ? data.tfe_outputs.security.values.nginx_instance_profile : null
+
+  root_block_device = {
+    size = each.value.disk_size
+    type = "gp3"
+  }
 
   tags = {
     Terraform   = "true"
-    Environment = "dev-customer-profile"
+    Environment = "dev"
+    Role        = each.value.role
   }
 }
 
-module "customer_profile_key_pair" {
+module "key_pair" {
 
   providers = {
     aws = aws.singapore
@@ -36,46 +52,19 @@ module "customer_profile_key_pair" {
   source  = "terraform-aws-modules/key-pair/aws"
   version = "3.0.1"
 
-  key_name           = var.customer_profile_ec2_key_name
+  key_name           = var.key_name
   create_private_key = true
 }
+
 ###############################################################################################################
-### ACCOUNT EC2 CREATION ###
+### DNS: rancher.kst-devops.com -> nginx public IP ###
 ###############################################################################################################
-module "account_ec2_instance" {
-  source = "terraform-aws-modules/ec2-instance/aws"
 
-  providers = {
-    aws = aws.tokyo
-  }
-
-  for_each = var.account_ec2_name
-  name     = "instance-${each.key}"
-
-  instance_type               = var.account_ec2_instance_type
-  ami_ssm_parameter           = var.account_ec2_ami_ssm_parameter
-  associate_public_ip_address = var.account_ec2_associate_public_ip_address
-  key_name                    = var.account_ec2_key_name
-  monitoring                  = var.account_ec2_monitoring
-  subnet_id                   = data.tfe_outputs.network.values.account_private_subnets[0]
-  create_security_group       = false # use only the SGs from the security workspace
-  vpc_security_group_ids      = compact([try(data.tfe_outputs.security.values[var.account_ec2_security_groups[each.key]], null)])
-
-  tags = {
-    Terraform   = "true"
-    Environment = "dev-account"
-  }
-}
-
-module "account_key_pair" {
-  source  = "terraform-aws-modules/key-pair/aws"
-  version = "3.0.1"
-
-  providers = {
-    aws = aws.tokyo
-  }
-
-
-  key_name           = var.account_ec2_key_name
-  create_private_key = true
+resource "aws_route53_record" "rancher" {
+  provider = aws.singapore
+  zone_id  = data.tfe_outputs.network.values.zone_id
+  name     = "rancher.kst-devops.com"
+  type     = "A"
+  ttl      = 300
+  records  = [module.ec2_instance["nginx"].public_ip]
 }

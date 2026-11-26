@@ -1,0 +1,6 @@
+roles:
+  - name: lablabs.rke2
+
+collections:
+  - name: ansible.utils      # needed by lablabs.rke2
+  - name: community.general  # needed by lablabs.rke2

@@ -1,71 +1,188 @@
 locals {
-  # Security group IDs that tfvars can refer to by name (source_sg = "...")
-  security_group_ids = {
-    customer_profile_jump = module.customer_profile_jump_security_group.id
-  }
-
-  # Same rules as tfvars, but source_sg is swapped for the real security group ID
-  customer_profile_ingress_rules = {
-    for name, rule in var.customer_profile_ingress_rules :
-    name => merge(rule, {
-      referenced_security_group_id = rule.source_sg == null ? rule.referenced_security_group_id : local.security_group_ids[rule.source_sg]
-    })
-  }
+  vpc_id = data.tfe_outputs.network.values.vpc_id
 }
 
-module "customer_profile_ec2_security_group" {
-  source = "terraform-aws-modules/security-group/aws"
+################################################################################
+# JUMP HOST
+#   in : 22 from internet
+#   out: everything
+################################################################################
 
-  providers = {
-    aws = aws.singapore
-  }
-
-  name        = var.customer_profile_sg_name
-  description = var.customer_profile_sg_description
-  vpc_id      = data.tfe_outputs.network.values.customer_profile_vpc_id
-
-  ingress_rules = local.customer_profile_ingress_rules
-  egress_rules  = var.customer_profile_egress_rules
-
-  tags = {
-    Environment = "customer_profile"
-    ManagedBy   = "terraform"
-  }
+resource "aws_security_group" "jump" {
+  provider    = aws.singapore
+  name        = "jump-sg"
+  description = "Jump host"
+  vpc_id      = local.vpc_id
 }
 
-module "customer_profile_jump_security_group" {
-  source = "terraform-aws-modules/security-group/aws"
-
-  providers = {
-    aws = aws.singapore
-  }
-
-  name          = var.customer_profile_jump_sg_name
-  description   = var.customer_profile_jump_sg_description
-  vpc_id        = data.tfe_outputs.network.values.customer_profile_vpc_id
-  ingress_rules = var.customer_profile_jump_ingress_rules
-  egress_rules  = var.customer_profile_jump_egress_rules
-
-  tags = {
-    Environment = "customer_profile"
-  }
+resource "aws_vpc_security_group_ingress_rule" "jump_ssh" {
+  provider          = aws.singapore
+  security_group_id = aws_security_group.jump.id
+  cidr_ipv4         = "0.0.0.0/0" # change to your own IP, e.g. "1.2.3.4/32"
+  ip_protocol       = "tcp"
+  from_port         = 22
+  to_port           = 22
 }
 
-module "account_security_group" {
-  source = "terraform-aws-modules/security-group/aws"
+resource "aws_vpc_security_group_egress_rule" "jump_out" {
+  provider          = aws.singapore
+  security_group_id = aws_security_group.jump.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
+}
 
-  # account VPC is in Tokyo
-  providers = {
-    aws = aws.tokyo
-  }
+################################################################################
+# NGINX
+#   in : 80, 443 from internet
+#        6443, 9345 from RKE2 nodes
+#        22 from jump host
+#   out: everything
+################################################################################
 
-  name          = var.account_sg_name
-  description   = var.account_sg_description
-  vpc_id        = data.tfe_outputs.network.values.account_vpc_id
-  ingress_rules = var.account_ingress_rules
-  egress_rules  = var.account_egress_rules
+resource "aws_security_group" "nginx" {
+  provider    = aws.singapore
+  name        = "nginx-sg"
+  description = "nginx load balancer"
+  vpc_id      = local.vpc_id
+}
 
-  tags = {
-    Environment = "account"
-  }
+resource "aws_vpc_security_group_ingress_rule" "nginx_http" {
+  provider          = aws.singapore
+  security_group_id = aws_security_group.nginx.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "tcp"
+  from_port         = 80
+  to_port           = 80
+}
+
+resource "aws_vpc_security_group_ingress_rule" "nginx_https" {
+  provider          = aws.singapore
+  security_group_id = aws_security_group.nginx.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+}
+
+resource "aws_vpc_security_group_ingress_rule" "nginx_ssh_from_jump" {
+  provider                     = aws.singapore
+  security_group_id            = aws_security_group.nginx.id
+  referenced_security_group_id = aws_security_group.jump.id
+  ip_protocol                  = "tcp"
+  from_port                    = 22
+  to_port                      = 22
+}
+
+# RKE2 nodes -> nginx: kube api (6443) and rke2 join (9345)
+resource "aws_vpc_security_group_ingress_rule" "nginx_from_rke2" {
+  provider                     = aws.singapore
+  for_each                     = toset(["6443", "9345"])
+  security_group_id            = aws_security_group.nginx.id
+  referenced_security_group_id = aws_security_group.rke2.id
+  ip_protocol                  = "tcp"
+  from_port                    = each.value
+  to_port                      = each.value
+}
+
+resource "aws_vpc_security_group_egress_rule" "nginx_out" {
+  provider          = aws.singapore
+  security_group_id = aws_security_group.nginx.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
+}
+
+################################################################################
+# RKE2 NODES (3 masters + 1 worker)
+#   in : everything from other RKE2 nodes
+#        80, 443, 6443, 9345 from nginx
+#        22 from jump host
+#   out: everything
+################################################################################
+
+resource "aws_security_group" "rke2" {
+  provider    = aws.singapore
+  name        = "rke2-node-sg"
+  description = "RKE2 nodes"
+  vpc_id      = local.vpc_id
+}
+
+resource "aws_vpc_security_group_ingress_rule" "rke2_from_rke2" {
+  provider                     = aws.singapore
+  security_group_id            = aws_security_group.rke2.id
+  referenced_security_group_id = aws_security_group.rke2.id
+  ip_protocol                  = "-1"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "rke2_from_nginx" {
+  provider                     = aws.singapore
+  for_each                     = toset(["80", "443", "6443", "9345"])
+  security_group_id            = aws_security_group.rke2.id
+  referenced_security_group_id = aws_security_group.nginx.id
+  ip_protocol                  = "tcp"
+  from_port                    = each.value
+  to_port                      = each.value
+}
+
+resource "aws_vpc_security_group_ingress_rule" "rke2_ssh_from_jump" {
+  provider                     = aws.singapore
+  security_group_id            = aws_security_group.rke2.id
+  referenced_security_group_id = aws_security_group.jump.id
+  ip_protocol                  = "tcp"
+  from_port                    = 22
+  to_port                      = 22
+}
+
+resource "aws_vpc_security_group_egress_rule" "rke2_out" {
+  provider          = aws.singapore
+  security_group_id = aws_security_group.rke2.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
+}
+
+################################################################################
+# NGINX IAM ROLE
+#   lets certbot on nginx add the _acme-challenge TXT record in Route53
+#   (only in the kst-devops.com zone)
+################################################################################
+
+resource "aws_iam_role" "nginx" {
+  provider = aws.singapore
+  name     = "nginx-certbot"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ec2.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "nginx_route53" {
+  provider = aws.singapore
+  name     = "route53-certbot"
+  role     = aws_iam_role.nginx.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["route53:ListHostedZones", "route53:GetChange"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = "route53:ChangeResourceRecordSets"
+        Resource = "arn:aws:route53:::hostedzone/${data.tfe_outputs.network.values.zone_id}"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_instance_profile" "nginx" {
+  provider = aws.singapore
+  name     = "nginx-certbot"
+  role     = aws_iam_role.nginx.name
 }

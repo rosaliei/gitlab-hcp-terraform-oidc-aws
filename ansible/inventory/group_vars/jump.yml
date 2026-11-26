@@ -1,0 +1,2 @@
+# The jump host is public, connect to it directly (no ProxyCommand)
+ansible_ssh_common_args: -o StrictHostKeyChecking=no

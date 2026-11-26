@@ -1,0 +1,55 @@
+# 1. nginx first, because masters 2 and 3 join the cluster through it
+- name: Load balancer
+  hosts: nginx
+  become: true
+  tasks:
+    - name: Install nginx (+ TCP stream module) and certbot (+ Route53 plugin)
+      ansible.builtin.apt:
+        name: [nginx, libnginx-mod-stream, certbot, python3-certbot-dns-route53]
+        update_cache: true
+
+    # certbot adds the _acme-challenge TXT record in Route53 (IAM role on this server),
+    # Let's Encrypt checks it, certbot removes it. Runs only if there is no cert yet.
+    - name: Get Let's Encrypt certificate (DNS challenge)
+      ansible.builtin.command: >-
+        certbot certonly --dns-route53
+        -d {{ domain }}
+        --non-interactive --agree-tos --register-unsafely-without-email
+        --deploy-hook "systemctl reload nginx"
+      args:
+        creates: /etc/letsencrypt/live/{{ domain }}/fullchain.pem
+
+    # certbot.timer (installed with certbot) renews the cert twice a day when it is
+    # close to expiry, then runs the deploy-hook to reload nginx.
+    - name: Make sure auto-renew timer is on
+      ansible.builtin.systemd:
+        name: certbot.timer
+        enabled: true
+        state: started
+
+    - name: Write nginx.conf
+      ansible.builtin.template:
+        src: templates/nginx.conf.j2
+        dest: /etc/nginx/nginx.conf
+        mode: "0644"
+        validate: nginx -t -c %s
+      notify: Restart nginx
+
+  handlers:
+    - name: Restart nginx
+      ansible.builtin.service:
+        name: nginx
+        state: restarted
+
+# 2. RKE2 on masters + worker
+- name: RKE2 cluster
+  hosts: k8s_cluster
+  become: true
+  pre_tasks:
+    - name: Stop if RKE2_TOKEN is not set
+      ansible.builtin.assert:
+        that: rke2_token | length > 0
+        fail_msg: "Run: export RKE2_TOKEN=<your secret>"
+      run_once: true
+  roles:
+    - role: lablabs.rke2
